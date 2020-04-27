@@ -1,5 +1,7 @@
 using Test
 
+# Tests / Examples
+
 include("Exceptional.jl")
 
 mystery(n) =
@@ -18,14 +20,36 @@ mystery(n) =
     end
 end
 
-@testset "mystery(0)" begin
+@testset "mystery" begin
     @test mystery(0) == 3
-end
-
-@testset "mystery(1)" begin
     @test mystery(1) == 2
-end
-
-@testset "mystery(2)" begin
     @test mystery(2) == 4
 end
+
+struct DivisionByZero <: Exception end
+
+println()
+
+try
+    handler_bind(DivisionByZero => (c) -> println("I saw a division by zero")) do
+        reciprocal(0)
+    end
+catch e
+    print("ERROR: $(e) was not handled.")
+end
+
+println()
+
+handler_bind_example = block() do escape
+    handler_bind(DivisionByZero => (c) -> (
+        println("I saw it too");
+        return_from(escape, "Done"))
+    ) do
+        handler_bind(
+            DivisionByZero => (c) -> println("I saw a division by zero"),
+        ) do
+            reciprocal(0)
+        end
+    end
+end
+print(handler_bind_example)
