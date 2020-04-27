@@ -56,13 +56,13 @@ function block(f)
     return_value
 end
 
-function handler_bind(f, aiai...)
+function handler_bind(func, handlers...)
     try
-        f()
+        func()
     catch e
-        for func in aiai
-            if isa(e, func.first)
-                func.second(1)
+        for handle in handlers
+            if isa(e, handle.first)
+                handle.second(1)
             end
         end
     end
