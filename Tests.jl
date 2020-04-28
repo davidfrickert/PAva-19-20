@@ -53,3 +53,19 @@ handler_bind_example = block() do escape
     end
 end
 print(handler_bind_example)
+
+# not working as intended
+handler_bind_example2 = block() do escape
+    handler_bind(DivisionByZero =>
+        (c)-> println("I saw it too")) do
+        handler_bind(DivisionByZero =>
+        (c)->(println("I saw a division by zero");
+            return_from(escape, "Done"))) do
+            reciprocal(0)
+            end
+        end
+    end
+
+print(handler_bind_example2)
+
+println()
