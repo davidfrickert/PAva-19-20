@@ -1,5 +1,6 @@
 import Base: error
 global n = 0
+global saved =0
 
 # Sent by return_from
 # contains the block_name to return from and the return value
@@ -74,4 +75,31 @@ function reciprocal(x)
     else
         1 / x
     end
+end
+
+function restart_bind(func, restarts...)
+    global saved
+    saved = restarts
+        func()
+end
+
+function invoke_restart(name, args...)
+    global saved
+    size = length(saved)
+    for i = 1:size
+        if saved[i].first == name
+            if length(args) > 0
+                return saved[i].second(args)
+            else
+                return saved[i].second()
+            end
+        end
+    end
+end
+
+
+reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identity,:retry_using => reciprocal) do
+    value == 0 ?
+    error(DivisionByZero()) :
+    1/value
 end
