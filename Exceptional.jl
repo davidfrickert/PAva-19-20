@@ -62,31 +62,15 @@ function block(f)
     return_value
 end
 
-function handler_bind(func, handlers...)
-    try
-        func()
-    catch e
-        for handle in handlers
-            if isa(e, handle.first)
-                try
-                    handle.second(1)
-                    throw(e)
-                catch rve
-                    if isa(rve, ReturnException)
-                        return rve.value
-                    else
-                        println("[handler_bind] Unexpected exception $(rve)")
-                    end
-                end
-            end
-        end
-    end
-end
-
 ## executes handlers applicable to Exception e
 # handlers: (Exception1 => f1, Exception2 => f2, ...)
 ##
 function execute_handlers(handlers, e::Exception)
+
+    if isa(e, NamedBlockReturnException) || isa(e, ReturnException)
+        throw(e)
+    end
+
     # filters handlers that are applicable to the exception
     filtered = Iterators.filter(handler -> isa(e, handler.first), handlers)
 
@@ -103,18 +87,19 @@ function execute_handlers(handlers, e::Exception)
             if isa(exc, ReturnException)
                 return exc.value
             else
-                println("[catch_restart_return] Unexpected exception $(exc)")
+                #println("[execute_handlers] Unexpected exception $(exc)")
                 throw(exc)
             end
         end
     end
 end
 
-function handler_bind_2(func, handlers...)
+function handler_bind(func, handlers...)
     try
         func()
     catch e
-        return execute_handlers(handlers, e)
+        #println("[handler_bind] catching $(e)")
+        execute_handlers(handlers, e)
     end
 end
 
@@ -160,18 +145,23 @@ function available_restart(name)
     false
 end
 
-
 reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identity,:retry_using => reciprocal) do
     value == 0 ?
     error(DivisionByZero()) :
     1/value
 end
 
-infinity() =restart_bind(:just_do_it => ()->1/0) do
-    reciprocal2(0)
+infinity() = restart_bind(:just_do_it => ()->1/0) do
+    reciprocal(0)
 end
+
 
 handler_bind_2(DivisionByZero =>
             (c)->invoke_restart(:return_zero)) do
             reciprocal2(0)
+end
+
+handler_bind_2(DivisionByZero =>
+            (c)->invoke_restart(:just_do_it))
+            infinity()
 end

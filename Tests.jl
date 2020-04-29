@@ -62,9 +62,9 @@ handler_bind_example2 = block() do escape
         (c)->(println("I saw a division by zero");
             return_from(escape, "Done"))) do
             reciprocal(0)
-            end
         end
     end
+end
 
 print(handler_bind_example2)
 
