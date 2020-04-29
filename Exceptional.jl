@@ -42,7 +42,7 @@ function process_exception(e, id)
             throw(e)
         end
     else
-        println("Unexpected exception caught: $(e), re-throwing")
+        #println("Unexpected exception caught: $(e), re-throwing")
         throw(e)
     end
 end
@@ -87,7 +87,7 @@ function execute_handlers(handlers, e::Exception)
             if isa(exc, ReturnException)
                 return exc.value
             else
-                #println("[execute_handlers] Unexpected exception $(exc)")
+                println("[execute_handlers] Unexpected exception $(exc)")
                 throw(exc)
             end
         end
@@ -156,12 +156,12 @@ infinity() = restart_bind(:just_do_it => ()->1/0) do
 end
 
 
-handler_bind_2(DivisionByZero =>
+handler_bind(DivisionByZero =>
             (c)->invoke_restart(:return_zero)) do
             reciprocal2(0)
 end
 
-handler_bind_2(DivisionByZero =>
+handler_bind(DivisionByZero =>
             (c)->invoke_restart(:just_do_it))
             infinity()
 end
