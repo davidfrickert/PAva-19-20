@@ -2,34 +2,43 @@ import Base: error
 global n = 0
 global saved =0
 
+# Used by restarts
+
+struct ReturnException <: Exception
+    value::Any
+end
+
 # Sent by return_from
 # contains the block_name to return from and the return value
 
-struct ReturnValueException <: Exception
+struct NamedBlockReturnException <: Exception
     block_name::String
     value::Any
 end
 
 struct DivisionByZero <: Exception end
 
-# throws a ReturnValueException with the given block name and return value
+# throws a NamedBlockReturnException with the given block name and return value
 
 function return_from(name, value = nothing)
-    throw(ReturnValueException(name, value))
+    throw(NamedBlockReturnException(name, value))
+end
+
+# not in original specificatin
+# similar to return_from but no named blocks
+function restart_return(value = nothing)
+    throw(ReturnException(value))
 end
 
 function error(exception::Exception)
     throw(exception)
 end
 
-
 function process_exception(e, id)
-    if isa(e, ReturnValueException)
+    if isa(e, NamedBlockReturnException)
         if e.block_name == id
-            #println("return_from sent to me ($(id)), returning value ($(e.value))")
             return e.value
         else
-            #println("return_from sent to '$(e.block_name)', I am '$(id)', propagating")
             throw(e)
         end
     else
@@ -46,12 +55,9 @@ function block(f)
     id = "fun$(n)"
     return_value = ""
     try
-        #println("executing named block '$(id)'")
         return_value = f(id)
-        #println("clean finish on named block '$(id)'")
     catch e
         return_value = process_exception(e, id)
-        #println("return_from used on named block '$(id)'")
     end
     return_value
 end
@@ -62,10 +68,53 @@ function handler_bind(func, handlers...)
     catch e
         for handle in handlers
             if isa(e, handle.first)
-                handle.second(1)
-                throw(e)
+                try
+                    handle.second(1)
+                    throw(e)
+                catch rve
+                    if isa(rve, ReturnException)
+                        return rve.value
+                    else
+                        println("[handler_bind] Unexpected exception $(rve)")
+                    end
+                end
             end
         end
+    end
+end
+
+## executes handlers applicable to Exception e
+# handlers: (Exception1 => f1, Exception2 => f2, ...)
+##
+function execute_handlers(handlers, e::Exception)
+    # filters handlers that are applicable to the exception
+    filtered = Iterators.filter(handler -> isa(e, handler.first), handlers)
+
+    for handler in filtered
+        try
+            # execute handler function
+            handler.second(1)
+            # this will not execute if handler "handles" the problem
+            # (by throwing an appropriate exception)
+            throw(e)
+        catch exc
+            # if the handler executed was a restart
+            # it will send a ReturnException to deliver the value
+            if isa(exc, ReturnException)
+                return exc.value
+            else
+                println("[catch_restart_return] Unexpected exception $(exc)")
+                throw(exc)
+            end
+        end
+    end
+end
+
+function handler_bind_2(func, handlers...)
+    try
+        func()
+    catch e
+        return execute_handlers(handlers, e)
     end
 end
 
@@ -84,14 +133,15 @@ function restart_bind(func, restarts...)
 end
 
 function invoke_restart(name, args...)
+#    println("invoking restart $(name)")
     global saved
     size = length(saved)
     for i = 1:size
         if saved[i].first == name
             if length(args) > 0
-                return saved[i].second(args)
+                restart_return(saved[i].second(args))
             else
-                return saved[i].second()
+                restart_return(saved[i].second())
             end
         end
     end
@@ -102,4 +152,10 @@ reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identi
     value == 0 ?
     error(DivisionByZero()) :
     1/value
+end
+
+
+handler_bind_optimized(DivisionByZero =>
+            (c)->invoke_restart(:return_zero)) do
+            reciprocal2(0)
 end
