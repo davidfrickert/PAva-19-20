@@ -133,12 +133,14 @@ function restart_bind(func, restarts...)
 end
 
 function invoke_restart(name, args...)
-#    println("invoking restart $(name)")
+    println("invoking restart $(name) $(args)")
     global saved
     size = length(saved)
     for i = 1:size
         if saved[i].first == name
-            if length(args) > 0
+            if length(args) == 1
+                restart_return(saved[i].second(args[1]))
+            elseif length(args) > 1
                 restart_return(saved[i].second(args))
             else
                 restart_return(saved[i].second())
@@ -155,7 +157,7 @@ reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identi
 end
 
 
-handler_bind_optimized(DivisionByZero =>
+handler_bind_2(DivisionByZero =>
             (c)->invoke_restart(:return_zero)) do
             reciprocal2(0)
 end
