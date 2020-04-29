@@ -133,7 +133,7 @@ function restart_bind(func, restarts...)
 end
 
 function invoke_restart(name, args...)
-    println("invoking restart $(name) $(args)")
+#    println("invoking restart $(name) $(args)")
     global saved
     size = length(saved)
     for i = 1:size
@@ -149,6 +149,17 @@ function invoke_restart(name, args...)
     end
 end
 
+function available_restart(name)
+    global saved
+    size = length(saved)
+    for i = 1:size
+        if saved[i].first == name
+            return true
+        end
+    end
+    false
+end
+
 
 reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identity,:retry_using => reciprocal) do
     value == 0 ?
@@ -156,6 +167,9 @@ reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identi
     1/value
 end
 
+infinity() =restart_bind(:just_do_it => ()->1/0) do
+    reciprocal2(0)
+end
 
 handler_bind_2(DivisionByZero =>
             (c)->invoke_restart(:return_zero)) do
