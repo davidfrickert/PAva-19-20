@@ -1,6 +1,6 @@
 import Base: error
 global n = 0
-global saved =0
+global available_restarts = []
 
 # Used by restarts
 
@@ -42,7 +42,8 @@ function process_exception(e, id)
             throw(e)
         end
     else
-        #println("Unexpected exception caught: $(e), re-throwing")
+        println("Unexpected exception caught: $(e), re-throwing")
+        println("leaving scope")
         throw(e)
     end
 end
@@ -78,9 +79,6 @@ function execute_handlers(handlers, e::Exception)
         try
             # execute handler function
             handler.second(1)
-            # this will not execute if handler "handles" the problem
-            # (by throwing an appropriate exception)
-            throw(e)
         catch exc
             # if the handler executed was a restart
             # it will send a ReturnException to deliver the value
@@ -92,6 +90,10 @@ function execute_handlers(handlers, e::Exception)
             end
         end
     end
+
+    # this will not execute if handler "handles" the problem
+    # (by throwing an appropriate exception)
+    throw(e)
 end
 
 function handler_bind(func, handlers...)
@@ -112,33 +114,33 @@ function reciprocal(x)
 end
 
 function restart_bind(func, restarts...)
-    global saved
-    saved = restarts
-        func()
+    global available_restarts
+    append!(available_restarts, restarts)
+    func()
 end
 
 function invoke_restart(name, args...)
-#    println("invoking restart $(name) $(args)")
-    global saved
-    size = length(saved)
+    println("invoking restart $(name) $(args)")
+    global available_restarts
+    size = length(available_restarts)
     for i = 1:size
-        if saved[i].first == name
+        if available_restarts[i].first == name
             if length(args) == 1
-                restart_return(saved[i].second(args[1]))
+                restart_return(available_restarts[i].second(args[1]))
             elseif length(args) > 1
-                restart_return(saved[i].second(args))
+                restart_return(available_restarts[i].second(args))
             else
-                restart_return(saved[i].second())
+                restart_return(available_restarts[i].second())
             end
         end
     end
 end
 
 function available_restart(name)
-    global saved
-    size = length(saved)
+    global available_restarts
+    size = length(available_restarts)
     for i = 1:size
-        if saved[i].first == name
+        if available_restarts[i].first == name
             return true
         end
     end
@@ -146,9 +148,7 @@ function available_restart(name)
 end
 
 reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identity,:retry_using => reciprocal) do
-    value == 0 ?
-    error(DivisionByZero()) :
-    1/value
+    reciprocal(0)
 end
 
 infinity() = restart_bind(:just_do_it => ()->1/0) do
@@ -162,6 +162,18 @@ handler_bind(DivisionByZero =>
 end
 
 handler_bind(DivisionByZero =>
-            (c)->invoke_restart(:just_do_it))
+            (c)->invoke_restart(:just_do_it)) do
             infinity()
+end
+
+handler_bind(DivisionByZero =>
+    (c)-> for restart in (:return_one, :return_zero, :die_horribly)
+                if available_restart(restart)
+                    invoke_restart(restart)
+                end
+    end) do
+    restart_bind(:return_zero => ()->0, :return_value => identity,
+        :retry_using => reciprocal, :return_one => ()->1) do
+        reciprocal(0)
+    end
 end

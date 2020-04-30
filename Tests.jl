@@ -69,3 +69,26 @@ end
 print(handler_bind_example2)
 
 println()
+
+handler_bind(DivisionByZero =>
+    (c)->invoke_restart(:return_zero)) do
+    infinity()
+end
+# 0
+
+handler_bind(DivisionByZero =>
+    (c)->invoke_restart(:return_value, 1)) do
+    infinity()
+end
+# 1
+
+handler_bind(DivisionByZero =>
+    (c)->invoke_restart(:retry_using, 10)) do
+    infinity()
+end
+# 0.1
+handler_bind(DivisionByZero =>
+    (c)->invoke_restart(:just_do_it)) do
+    infinity()
+end
+#Inf
