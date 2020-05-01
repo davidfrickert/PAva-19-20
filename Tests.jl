@@ -70,6 +70,26 @@ print(handler_bind_example2)
 
 println()
 
+## using for
+
+handler_bind(DivisionByZero =>
+    (c)->
+   for restart in (:return_one, :return_zero, :die_horribly)
+                if available_restart(restart)
+                   invoke_restart(restart)
+             end
+           end
+    ) do
+    restart_bind(:return_one => ()->1, :return_value => identity,
+        :retry_using => reciprocal) do
+        reciprocal(0)
+    end
+end
+
+println()
+
+## infinity
+
 handler_bind(DivisionByZero =>
     (c)->invoke_restart(:return_zero)) do
     infinity()

@@ -1,7 +1,7 @@
 import Base: error
 global n = 0
 global available_restarts = []
-
+global available_handlers = []
 # Used by restarts
 
 struct ReturnException <: Exception
@@ -43,7 +43,6 @@ function process_exception(e, id)
         end
     else
         println("Unexpected exception caught: $(e), re-throwing")
-        println("leaving scope")
         throw(e)
     end
 end
@@ -74,7 +73,6 @@ function execute_handlers(handlers, e::Exception)
 
     # filters handlers that are applicable to the exception
     filtered = Iterators.filter(handler -> isa(e, handler.first), handlers)
-
     for handler in filtered
         try
             # execute handler function
@@ -96,13 +94,29 @@ function execute_handlers(handlers, e::Exception)
     throw(e)
 end
 
+function execute_handlers(e::Exception)
+    execute_handlers(available_handlers, e)
+end
+
+function remove_handlers(handlers)
+    filter!(handler -> handler ∉ handlers, available_handlers)
+end
+
 function handler_bind(func, handlers...)
+    append!(available_handlers, handlers)
+    return_value = nothing
     try
-        func()
+        return_value = func()
     catch e
-        #println("[handler_bind] catching $(e)")
-        execute_handlers(handlers, e)
+        try
+            return_value = execute_handlers(handlers, e)
+        catch inner_exc
+            remove_handlers(handlers)
+            throw(inner_exc)
+        end
     end
+    remove_handlers(handlers)
+    return_value
 end
 
 function reciprocal(x)
@@ -113,10 +127,39 @@ function reciprocal(x)
     end
 end
 
+function remove_restarts(restarts)
+    # filter macro modifies the array, ∉ = not in
+    filter!(restart -> restart ∉ restarts, available_restarts)
+end
+
 function restart_bind(func, restarts...)
     global available_restarts
     append!(available_restarts, restarts)
-    func()
+    MAX_TRIES = 5
+    tries = 0
+    return_value = nothing
+    while true
+        try
+            return_value = func()
+            break
+        catch e
+            tries += 1
+            if tries == MAX_TRIES
+                remove_restarts(restarts)
+                throw(e)
+            else
+                try
+                    return_value = execute_handlers(e)
+                catch inner_exc
+                    remove_restarts(restarts)
+                    throw(inner_exc)
+                end
+                break
+            end
+        end
+    end
+    remove_restarts(restarts)
+    return return_value
 end
 
 function invoke_restart(name, args...)
@@ -141,9 +184,11 @@ function available_restart(name)
     size = length(available_restarts)
     for i = 1:size
         if available_restarts[i].first == name
+            println("restart $(name) is available")
             return true
         end
     end
+    println("restart $(name) is not available")
     false
 end
 
@@ -152,28 +197,5 @@ reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identi
 end
 
 infinity() = restart_bind(:just_do_it => ()->1/0) do
-    reciprocal(0)
-end
-
-
-handler_bind(DivisionByZero =>
-            (c)->invoke_restart(:return_zero)) do
-            reciprocal2(0)
-end
-
-handler_bind(DivisionByZero =>
-            (c)->invoke_restart(:just_do_it)) do
-            infinity()
-end
-
-handler_bind(DivisionByZero =>
-    (c)-> for restart in (:return_one, :return_zero, :die_horribly)
-                if available_restart(restart)
-                    invoke_restart(restart)
-                end
-    end) do
-    restart_bind(:return_zero => ()->0, :return_value => identity,
-        :retry_using => reciprocal, :return_one => ()->1) do
-        reciprocal(0)
-    end
+    reciprocal2(0)
 end
