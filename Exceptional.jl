@@ -163,11 +163,6 @@ function restart_bind(func, restarts...)
     return return_value
 end
 
-function erase()
-    global available_restarts
-    available_restarts = []
-end
-
 function invoke_restart(name, args...)
     println("invoking restart $(name) $(args)")
     global available_restarts
