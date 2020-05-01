@@ -27,6 +27,7 @@ end
 # not in original specificatin
 # similar to return_from but no named blocks
 function restart_return(value = nothing)
+    erase()
     throw(ReturnException(value))
 end
 
@@ -117,6 +118,11 @@ function restart_bind(func, restarts...)
     global available_restarts
     append!(available_restarts, restarts)
     func()
+end
+
+function erase()
+    global available_restarts
+    available_restarts = []
 end
 
 function invoke_restart(name, args...)
