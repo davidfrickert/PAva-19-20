@@ -27,7 +27,6 @@ end
 # not in original specificatin
 # similar to return_from but no named blocks
 function restart_return(value = nothing)
-    erase()
     throw(ReturnException(value))
 end
 
@@ -199,4 +198,14 @@ end
 
 infinity() = restart_bind(:just_do_it => ()->1/0) do
     reciprocal2(0)
+end
+
+handler_bind(DivisionByZero =>
+    (c)->invoke_restart(:just_do_it, 1)) do
+
+    restart_bind(:just_do_it => identity) do
+        restart_bind(:just_do_it => identity) do
+            reciprocal(0)
+        end
+    end
 end
