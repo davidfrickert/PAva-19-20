@@ -53,7 +53,7 @@ end
 function block(f)
     global n = n + 1
     id = "fun$(n)"
-    return_value = ""
+    return_value = nothing
     try
         return_value = f(id)
     catch e
@@ -103,20 +103,107 @@ function remove_handlers(handlers)
 end
 
 function handler_bind(func, handlers...)
-    append!(available_handlers, handlers)
-    return_value = nothing
-    try
-        return_value = func()
-    catch e
+        append!(available_handlers, handlers)
+        return_value = nothing
         try
-            return_value = execute_handlers(handlers, e)
-        catch inner_exc
-            remove_handlers(handlers)
-            throw(inner_exc)
+            return_value = func()
+        catch e
+            try
+                return_value = execute_handlers(handlers, e)
+            catch inner_exc
+                remove_handlers(handlers)
+                throw(inner_exc)
+            end
+        end
+        remove_handlers(handlers)
+        return_value
+
+end
+
+
+function remove_restarts(block_name)
+    filter!(restart -> restart.first != block_name, available_restarts)
+end
+
+function add_restarts(block_name, restarts)
+    # maps the block name to the restarts
+    # ex: (fun1 => restart1, fun1 => restart2..)
+    restart_pairs = map(restart -> (block_name => restart), restarts)
+    append!(available_restarts, restart_pairs)
+end
+
+function restart_bind(func, restarts...)
+
+    MAX_TRIES = 5
+    tries = 0
+    return_value = nothing
+
+    block() do scope
+        global available_restarts
+        add_restarts(scope, restarts)
+        while true
+            try
+                return_value = func()
+                break
+            catch e
+                tries += 1
+                if tries == MAX_TRIES
+                    remove_restarts(scope)
+                    throw(e)
+                else
+                    try
+                        return_value = execute_handlers(e)
+                    catch inner_exc
+                        remove_restarts(scope)
+                        throw(inner_exc)
+                    end
+                    break
+                end
+            end
+        end
+        remove_restarts(scope)
+        return return_value
+    end
+end
+
+function get_restart_list()
+    map(restart -> restart.second, available_restarts)
+end
+
+function invoke_restart(name, args...)
+    println("invoking restart $(name) $(args)")
+    global available_restarts
+
+    restart_list = get_restart_list()
+
+    size = length(restart_list)
+    for i = 1:size
+        if restart_list[i].first == name
+            if length(args) == 1
+                restart_return(restart_list[i].second(args[1]))
+            elseif length(args) > 1
+                restart_return(restart_list[i].second(args))
+            else
+                restart_return(restart_list[i].second())
+            end
         end
     end
-    remove_handlers(handlers)
-    return_value
+end
+
+function available_restart(name)
+    global available_restarts
+
+    restart_list = get_restart_list()
+
+    size = length(restart_list)
+    for i = 1:size
+        if restart_list[i].first == name
+            println("restart $(name) is available")
+            return true
+        end
+    end
+    println("restart $(name) is not available")
+    false
 end
 
 function reciprocal(x)
@@ -127,85 +214,10 @@ function reciprocal(x)
     end
 end
 
-function remove_restarts(restarts)
-    # filter macro modifies the array, ∉ = not in
-    filter!(restart -> restart ∉ restarts, available_restarts)
-end
-
-function restart_bind(func, restarts...)
-    global available_restarts
-    append!(available_restarts, restarts)
-    MAX_TRIES = 5
-    tries = 0
-    return_value = nothing
-    while true
-        try
-            return_value = func()
-            break
-        catch e
-            tries += 1
-            if tries == MAX_TRIES
-                remove_restarts(restarts)
-                throw(e)
-            else
-                try
-                    return_value = execute_handlers(e)
-                catch inner_exc
-                    remove_restarts(restarts)
-                    throw(inner_exc)
-                end
-                break
-            end
-        end
-    end
-    remove_restarts(restarts)
-    return return_value
-end
-
-function invoke_restart(name, args...)
-    println("invoking restart $(name) $(args)")
-    global available_restarts
-    size = length(available_restarts)
-    for i = 1:size
-        if available_restarts[i].first == name
-            if length(args) == 1
-                restart_return(available_restarts[i].second(args[1]))
-            elseif length(args) > 1
-                restart_return(available_restarts[i].second(args))
-            else
-                restart_return(available_restarts[i].second())
-            end
-        end
-    end
-end
-
-function available_restart(name)
-    global available_restarts
-    size = length(available_restarts)
-    for i = 1:size
-        if available_restarts[i].first == name
-            println("restart $(name) is available")
-            return true
-        end
-    end
-    println("restart $(name) is not available")
-    false
-end
-
 reciprocal2(value) = restart_bind(:return_zero => ()->0, :return_value => identity,:retry_using => reciprocal) do
     reciprocal(0)
 end
 
 infinity() = restart_bind(:just_do_it => ()->1/0) do
     reciprocal2(0)
-end
-
-handler_bind(DivisionByZero =>
-    (c)->invoke_restart(:just_do_it, 1)) do
-
-    restart_bind(:just_do_it => identity) do
-        restart_bind(:just_do_it => identity) do
-            reciprocal(0)
-        end
-    end
 end
