@@ -31,6 +31,7 @@ function restart_return(value = nothing)
 end
 
 function error(exception::Exception)
+
     throw(exception)
 end
 
@@ -65,14 +66,16 @@ end
 ## executes handlers applicable to Exception e
 # handlers: (Exception1 => f1, Exception2 => f2, ...)
 ##
-function execute_handlers(handlers, e::Exception)
+function execute_handlers(e::Exception)
 
     if isa(e, NamedBlockReturnException) || isa(e, ReturnException)
         throw(e)
     end
 
+    handler_list = get_handler_list()
+
     # filters handlers that are applicable to the exception
-    filtered = Iterators.filter(handler -> isa(e, handler.first), handlers)
+    filtered = Iterators.filter(handler -> isa(e, handler.first), handler_list)
     for handler in filtered
         try
             # execute handler function
@@ -83,7 +86,7 @@ function execute_handlers(handlers, e::Exception)
             if isa(exc, ReturnException)
                 return exc.value
             else
-                println("[execute_handlers] Unexpected exception $(exc)")
+                #println("[execute_handlers] Unexpected exception $(exc)")
                 throw(exc)
             end
         end
@@ -94,32 +97,46 @@ function execute_handlers(handlers, e::Exception)
     throw(e)
 end
 
-function execute_handlers(e::Exception)
-    execute_handlers(available_handlers, e)
+function remove_handlers(block_name)
+    filter!(handler -> handler.first != block_name, available_handlers)
 end
 
-function remove_handlers(handlers)
-    filter!(handler -> handler ∉ handlers, available_handlers)
+function add_handlers(block_name, handlers)
+    handler_pairs = map(handler -> (block_name => handler), handlers)
+    append!(available_handlers, handler_pairs)
+end
+
+function get_second_from_pairs(pairs::Array)
+    map(pair -> pair.second, pairs)
+end
+
+function get_restart_list()
+    get_second_from_pairs(available_restarts)
+end
+
+function get_handler_list()
+    get_second_from_pairs(available_handlers)
 end
 
 function handler_bind(func, handlers...)
-        append!(available_handlers, handlers)
-        return_value = nothing
+
+    return_value = nothing
+    block() do scope
+        add_handlers(scope, handlers)
         try
             return_value = func()
         catch e
             try
-                return_value = execute_handlers(handlers, e)
+                return_value = execute_handlers(e)
             catch inner_exc
-                remove_handlers(handlers)
+                remove_handlers(scope)
                 throw(inner_exc)
             end
         end
-        remove_handlers(handlers)
-        return_value
-
+        remove_handlers(scope)
+    end
+    return_value
 end
-
 
 function remove_restarts(block_name)
     filter!(restart -> restart.first != block_name, available_restarts)
@@ -164,10 +181,6 @@ function restart_bind(func, restarts...)
         remove_restarts(scope)
         return return_value
     end
-end
-
-function get_restart_list()
-    map(restart -> restart.second, available_restarts)
 end
 
 function invoke_restart(name, args...)
