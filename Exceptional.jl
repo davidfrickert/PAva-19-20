@@ -31,8 +31,7 @@ function restart_return(value = nothing)
 end
 
 function error(exception::Exception)
-
-    throw(exception)
+    execute_handlers(exception)
 end
 
 function process_exception(e, id)
@@ -97,10 +96,16 @@ function execute_handlers(e::Exception)
     throw(e)
 end
 
+# removes handlers from global available_handlers
+# removes all that are associated with "block_name"
 function remove_handlers(block_name)
     filter!(handler -> handler.first != block_name, available_handlers)
 end
 
+# adds handlers to global available_handlers
+# associates them with "block_name" var
+# Example with: [block_name = "fun1", handlers = [("DivisionByZero => (...)")]]
+# ["fun1" => ("DivisionByZero => (...)")]
 function add_handlers(block_name, handlers)
     handler_pairs = map(handler -> (block_name => handler), handlers)
     append!(available_handlers, handler_pairs)
@@ -185,7 +190,6 @@ end
 
 function invoke_restart(name, args...)
     println("invoking restart $(name) $(args)")
-    global available_restarts
 
     restart_list = get_restart_list()
 
