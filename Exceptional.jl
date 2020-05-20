@@ -80,19 +80,19 @@ function execute_handlers(e::Exception)
             # execute handler function
             handler.second(1)
         catch exc
-            # if the handler executed was a restart
-            # it will send a ReturnException to deliver the value
             if isa(exc, ReturnException)
+                # if the handler executed was a restart, a ReturnException
+                # will be thrown, containing a return value
                 return exc.value
             else
-                #println("[execute_handlers] Unexpected exception $(exc)")
+                # any other exception thrown by the handler will not be handled
                 throw(exc)
             end
         end
     end
 
     # this will not execute if handler "handles" the problem
-    # (by throwing an appropriate exception)
+    # either by using a return_from to escape, or a ReturnException
     throw(e)
 end
 
@@ -103,89 +103,73 @@ function remove_handlers(block_name)
 end
 
 # adds handlers to global available_handlers
-# associates them with "block_name" var
-# Example with: [block_name = "fun1", handlers = [("DivisionByZero => (...)")]]
-# ["fun1" => ("DivisionByZero => (...)")]
+# associates them with "block_name"
 function add_handlers(block_name, handlers)
+    # maps the block name to the handlers
+    # ex: (fun1 => handler1, fun1 => handler2, fun1 => handler3)
     handler_pairs = map(handler -> (block_name => handler), handlers)
     append!(available_handlers, handler_pairs)
 end
 
+# maps an array of pairs to array of the right side element
 function get_second_from_pairs(pairs::Array)
     map(pair -> pair.second, pairs)
 end
 
+# gets list of restarts without the scope associated
 function get_restart_list()
     get_second_from_pairs(available_restarts)
 end
 
+# gets list of handlers without the scope associated
 function get_handler_list()
     get_second_from_pairs(available_handlers)
 end
 
 function handler_bind(func, handlers...)
-
     return_value = nothing
+
     block() do scope
         add_handlers(scope, handlers)
         try
             return_value = func()
-        catch e
-            try
-                return_value = execute_handlers(e)
-            catch inner_exc
-                remove_handlers(scope)
-                throw(inner_exc)
-            end
+        finally
+            remove_handlers(scope)
         end
-        remove_handlers(scope)
     end
+
     return_value
 end
 
+# same as remove_handlers but for restarts
 function remove_restarts(block_name)
     filter!(restart -> restart.first != block_name, available_restarts)
 end
 
+# same as add_handlers but for restarts
 function add_restarts(block_name, restarts)
     # maps the block name to the restarts
-    # ex: (fun1 => restart1, fun1 => restart2..)
+    # ex: (fun1 => restart1, fun1 => restart2, fun1 => restart3)
     restart_pairs = map(restart -> (block_name => restart), restarts)
     append!(available_restarts, restart_pairs)
 end
 
 function restart_bind(func, restarts...)
 
-    MAX_TRIES = 5
-    tries = 0
     return_value = nothing
 
     block() do scope
-        global available_restarts
         add_restarts(scope, restarts)
-        while true
-            try
-                return_value = func()
-                break
-            catch e
-                tries += 1
-                if tries == MAX_TRIES
-                    remove_restarts(scope)
-                    throw(e)
-                else
-                    try
-                        return_value = execute_handlers(e)
-                    catch inner_exc
-                        remove_restarts(scope)
-                        throw(inner_exc)
-                    end
-                    break
-                end
-            end
+        #while true
+        try
+            return_value = func()
+            #break
+        finally
+            remove_restarts(scope)
         end
-        remove_restarts(scope)
-        return return_value
+        #end
     end
+    return_value
 end
 
 function invoke_restart(name, args...)
