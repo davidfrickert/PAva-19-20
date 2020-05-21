@@ -1,5 +1,5 @@
 import Base: error
-global n = 0
+global n = UInt128(0)
 global available_restarts = []
 global available_handlers = []
 # Used by restarts
@@ -42,8 +42,7 @@ function process_exception(e, id)
             throw(e)
         end
     else
-        println("Unexpected exception caught: $(e), re-throwing")
-        throw(e)
+        error(e)
     end
 end
 
@@ -52,7 +51,7 @@ end
 
 function block(f)
     global n = n + 1
-    id = "fun$(n)"
+    id = "scope-$(n)"
     return_value = nothing
     try
         return_value = f(id)
@@ -71,14 +70,13 @@ function execute_handlers(e::Exception)
         throw(e)
     end
 
-    handler_list = get_handler_list()
+    e_handlers = Iterators.filter(handler -> isa(e, handler.first), get_handler_list())
 
     # filters handlers that are applicable to the exception
-    filtered = Iterators.filter(handler -> isa(e, handler.first), handler_list)
-    for handler in filtered
+    for handler in e_handlers
         try
-            # execute handler function
-            handler.second(1)
+            handler.second(e)
+            break
         catch exc
             if isa(exc, ReturnException)
                 # if the handler executed was a restart, a ReturnException
@@ -108,7 +106,7 @@ function add_handlers(block_name, handlers)
     # maps the block name to the handlers
     # ex: (fun1 => handler1, fun1 => handler2, fun1 => handler3)
     handler_pairs = map(handler -> (block_name => handler), handlers)
-    append!(available_handlers, handler_pairs)
+    prepend!(available_handlers, handler_pairs)
 end
 
 # maps an array of pairs to array of the right side element
@@ -130,8 +128,8 @@ function handler_bind(func, handlers...)
     return_value = nothing
 
     block() do scope
-        add_handlers(scope, handlers)
         try
+            add_handlers(scope, handlers)
             return_value = func()
         finally
             remove_handlers(scope)
@@ -151,7 +149,7 @@ function add_restarts(block_name, restarts)
     # maps the block name to the restarts
     # ex: (fun1 => restart1, fun1 => restart2, fun1 => restart3)
     restart_pairs = map(restart -> (block_name => restart), restarts)
-    append!(available_restarts, restart_pairs)
+    prepend!(available_restarts, restart_pairs)
 end
 
 function restart_bind(func, restarts...)
@@ -159,16 +157,14 @@ function restart_bind(func, restarts...)
     return_value = nothing
 
     block() do scope
-        add_restarts(scope, restarts)
-        #while true
         try
+            add_restarts(scope, restarts)
             return_value = func()
-            #break
         finally
             remove_restarts(scope)
         end
-        #end
     end
+
     return_value
 end
 
@@ -199,11 +195,9 @@ function available_restart(name)
     size = length(restart_list)
     for i = 1:size
         if restart_list[i].first == name
-            println("restart $(name) is available")
             return true
         end
     end
-    println("restart $(name) is not available")
     false
 end
 
