@@ -35,15 +35,10 @@ function error(exception::Exception)
 end
 
 function process_exception(e, id)
-    if isa(e, NamedBlockReturnException)
-        if e.block_name == id
-            return e.value
-        else
-            throw(e)
-        end
-    else
-        error(e)
+    if isa(e, NamedBlockReturnException) && e.block_name == id
+        return e.value
     end
+    throw(e)
 end
 
 # assigns a unique name using a global counter to the block
@@ -69,14 +64,23 @@ function execute_handlers(e::Exception)
     if isa(e, NamedBlockReturnException) || isa(e, ReturnException)
         throw(e)
     end
+    # "scope-N" => (ExceptionType => handler_to_execute)
+    # so, to extract the handlers that are applicable to "e"
+    # filter second of pair = (ExceptionType => handler_to_execute)
+    # filter first of pair = ExceptionType, this type should match "e"'s type
+    e_handlers = Iterators.filter(handler -> isa(e, handler.second.first), available_handlers)
 
-    e_handlers = Iterators.filter(handler -> isa(e, handler.first), get_handler_list())
+    # should only execute 1 handler per handler_bind form
+    handler_binds_executed = []
 
-    # filters handlers that are applicable to the exception
     for handler in e_handlers
         try
-            handler.second(e)
-            break
+            scope = handler.first
+            handler_function = handler.second.second
+            if scope ∉ handler_binds_executed
+                push!(handler_binds_executed, scope)
+                handler_function(e)
+            end
         catch exc
             if isa(exc, ReturnException)
                 # if the handler executed was a restart, a ReturnException
