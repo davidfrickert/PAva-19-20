@@ -5,21 +5,20 @@ function signal(e::Exception)
         throw(e)
     end
 
-    handler_list = get_handler_list()
+    handler_binds_executed = []
 
-    # filters handlers that are applicable to the exception
-    filtered = Iterators.filter(handler -> isa(e, handler.first), handler_list)
-    for handler in filtered
+    for handler in e_handlers
         try
-            # execute handler function
-            handler.second(1)
+            scope = handler.first
+            handler_function = handler.second.second
+            if scope ∉ handler_binds_executed
+                push!(handler_binds_executed, scope)
+                handler_function(e)
+            end
         catch exc
-            # if the handler executed was a restart
-            # it will send a ReturnException to deliver the value
             if isa(exc, ReturnException)
                 return exc.value
             else
-                #println("[execute_handlers] Unexpected exception $(exc)")
                 throw(exc)
             end
         end
@@ -28,9 +27,11 @@ end
 
 function error(exception::Exception)
     val = signal(exception)
+    # if no handler available for this exception and there are available restarts
+    # ask user for help
     if isnothing(val)
-        if size(available_restarts, 1) > 0
-            ask_for_help()
+        if length(available_restarts) > 0
+            val = ask_for_help()
         else
             throw(exception)
         end
@@ -62,7 +63,7 @@ function ask_for_help()
     try
         int_restart = parse(Int64, restart_selected)
         restart = get_restart_list()[int_restart]
-        println(restart)
+        return restart()
     catch e
         println(e)
     end
